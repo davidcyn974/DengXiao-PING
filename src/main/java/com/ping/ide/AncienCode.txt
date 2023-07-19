@@ -1,0 +1,743 @@
+package com.ping.ide;
+
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Side;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.*;
+import javafx.scene.text.Font;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
+
+import jfxtras.styles.jmetro.JMetro;
+import jfxtras.styles.jmetro.Style;
+
+import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.awt.Desktop;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.regex.Matcher;
+import org.fxmisc.richtext.CodeArea;
+import org.fxmisc.richtext.model.StyleSpans;
+import org.fxmisc.richtext.model.StyleSpansBuilder;
+
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
+import org.graalvm.polyglot.*;
+import java.util.regex.Pattern;
+import java.util.List;
+
+import static com.ping.ide.SyntaxHighlighter.computeHighlighting;
+import static com.sun.javafx.scene.control.skin.Utils.getResource;
+import javafx.print.PrinterJob;
+import javafx.scene.text.Text;
+
+
+public class Cimetiere extends Application {
+    private File currentRootDirectory;
+
+    SyntaxHighlighter highlighter = new SyntaxHighlighter();
+
+    @Override
+    public void start(Stage primaryStage) {
+
+        /*
+         * Code utilisé pour afficher une notification toute les XX secondes
+         *
+         */
+        // Créer une instance de Timer
+        Timer timer = new Timer();
+        // Planifier la tâche répétitive toutes les 10 secondes
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                // Code à exécuter à chaque itération du timer
+
+                // Afficher la notification
+                // Récuperer la date acutelle complète avec l'heure et les secondes
+                Date date = new Date();
+                SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
+                String formattedDate = dateFormat.format(date);
+                Platform.runLater(() -> notif("Toujours rester hydraté !", "Il est " + formattedDate, "Il faut boire de l'eau ! ", "drink.jpg", 500, 370));
+            }
+        }, 10000, 3000000); // Démarrer après 10 secondes et répéter toutes les 30 secondes
+
+        /*
+         * Fin du code de la notification répétitive
+         */
+        // Create a text area for the code
+        CodeArea codeArea = new CodeArea();
+        /*codeArea.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
+                codeArea.richChanges()
+                .filter(ch -> !ch.getInserted().equals(ch.getRemoved()))  // filter out replacements of equal content
+                .subscribe(change -> {
+                    codeArea.setStyleSpans(0, computeHighlighting(codeArea.getText(), ""));
+                });*/
+
+        codeArea.setStyle("-fx-font-size: 12pt;"); // Initial font size is 12
+
+        // Create all the buttons for the toolbar
+        Button zoomInButton = new Button();
+        Button zoomOutButton = new Button();
+        Button refreshButton = new Button();
+        Button saveFileButton = new Button();
+        Button runButton = new Button();
+        Button printButton = new Button();
+
+        // Load all the different icons
+        ImageView zoomInIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_zoom_in.png")));
+        zoomInIcon.setFitHeight(20);  // You can adjust the size as needed
+        zoomInIcon.setFitWidth(20);
+        zoomInButton.setGraphic(zoomInIcon);
+        Tooltip zoomInTooltip = new Tooltip("Zoom In");
+        Tooltip.install(zoomInButton, zoomInTooltip);
+
+        ImageView zoomOutIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_zoom_out.png")));
+        zoomOutIcon.setFitHeight(20);
+        zoomOutIcon.setFitWidth(20);
+        zoomOutButton.setGraphic(zoomOutIcon);
+        Tooltip zoomOutTooltip = new Tooltip("Zoom Out");
+        Tooltip.install(zoomOutButton, zoomOutTooltip);
+
+        ImageView folderIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_folder.png")));
+        zoomOutIcon.setFitHeight(20);
+        zoomOutIcon.setFitWidth(20);
+
+        ImageView fileIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_file.png")));
+        zoomOutIcon.setFitHeight(20);
+        zoomOutIcon.setFitWidth(20);
+
+        ImageView refreshIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_refresh.png")));
+        refreshIcon.setFitHeight(20);
+        refreshIcon.setFitWidth(20);
+        refreshButton.setGraphic(refreshIcon);
+        Tooltip refreshTooltip = new Tooltip("Refresh file tree");
+        Tooltip.install(refreshButton, refreshTooltip);
+
+        ImageView saveFileIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_save.png")));
+        saveFileIcon.setFitHeight(20);
+        saveFileIcon.setFitWidth(20);
+        saveFileButton.setGraphic(saveFileIcon);
+        Tooltip saveFileTooltip = new Tooltip("Save current file");
+        Tooltip.install(saveFileButton, saveFileTooltip);
+
+        ImageView runIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_run.png")));
+        runIcon.setFitHeight(20);  // You can adjust the size as needed
+        runIcon.setFitWidth(20);
+        runButton.setGraphic(runIcon);
+        Tooltip runTooltip = new Tooltip("Run current file");
+        Tooltip.install(runButton, runTooltip);
+
+        ImageView printIcon = new ImageView(new Image(getClass().getResourceAsStream("ic_print.png")));
+        printIcon.setFitHeight(20);  // You can adjust the size as needed
+        printIcon.setFitWidth(20);
+        printButton.setGraphic(printIcon);
+        Tooltip printTooltip = new Tooltip("Print the console");
+        Tooltip.install(printButton, printTooltip);
+
+        // Create a tab pane to contain all the files' tabs
+        TabPane tabPane = new TabPane();
+
+        // Define what happens when the "Zoom In" and "Zoom Out" buttons are clicked
+        zoomInButton.setOnAction(e -> {
+            Tab selectedTab = tabPane.getSelectionModel().getSelectedItem();
+            if (selectedTab != null) {
+                CodeArea textArea = (CodeArea) selectedTab.getContent();
+                String style = textArea.getStyle();
+                double size = 12;  // Default font size
+                if (style.matches(".*-fx-font-size: ([0-9]*).*")) {
+                    size = Double.parseDouble(style.replaceAll(".*-fx-font-size: ([0-9]*).*", "$1"));
+                }
+                textArea.setStyle("-fx-font-size: " + (size + 2) + "pt;");
+            }
+        });
+
+        zoomOutButton.setOnAction(e -> {
+            Tab selectedTab = tabPane.getSelectionModel().getSelectedItem();
+            if (selectedTab != null) {
+                CodeArea textArea = (CodeArea) selectedTab.getContent();
+                String style = textArea.getStyle();
+                double size = 12;  // Default font size
+                if (style.matches(".*-fx-font-size: ([0-9]*).*")) {
+                    size = Double.parseDouble(style.replaceAll(".*-fx-font-size: ([0-9]*).*", "$1"));
+                    if (size > 4) { // Prevent font size from getting too small
+                        textArea.setStyle("-fx-font-size: " + (size - 2) + "pt;");
+                    }
+                }
+            }
+        });
+
+        /*
+         * Code pour la barre de menu 'Help'
+         */
+        // Create a help bar and a "Help" menu
+        MenuBar helpBar = new MenuBar();
+        Menu helpMenu = new Menu("Help");
+        MenuItem gettingStarted = new MenuItem("Getting Started");
+        MenuItem keyboardShortcuts = new MenuItem("Keyboard Shortcuts");
+        MenuItem about = new MenuItem("About");
+        MenuItem updates = new MenuItem("Updates");
+        MenuItem technicalSupport = new MenuItem("Technical Support");
+
+        MenuItem faq = new MenuItem("FAQ");
+        MenuItem documentation = new MenuItem("Documentation");
+
+        // Créer un sous-menu pour les options d'accessibilité
+        Menu accessibilityOptions = new Menu("Accessibility Options");
+        // Ajouter les sous-éléments au sous-menu
+        MenuItem fontSizeItem = new MenuItem("Font Size");
+        MenuItem colorThemeItem = new MenuItem("Color Theme");
+        // Ajouter les sous-éléments au menu "Accessibility Options"
+        accessibilityOptions.getItems().addAll(fontSizeItem, colorThemeItem);
+
+
+        // Color Theme menu item
+        // By clicking this menu, change the theme color to dark or light
+        colorThemeItem.setOnAction(e -> {
+            // Create a new stage for the color theme dialog
+            Stage colorThemeStage = new Stage();
+            colorThemeStage.setTitle("Color Theme");
+            // Create a list of color themes
+            ObservableList<String> colorThemes = FXCollections.observableArrayList("Light", "Dark");
+            // Create a combo box to select the color theme
+            ComboBox<String> colorThemeComboBox = new ComboBox<>(colorThemes);
+            colorThemeComboBox.setValue("Light"); // Default color theme is light
+            // Create a button to apply the selected color theme
+            Button applyButton = new Button("Apply");
+            // Create a button to cancel the color theme dialog
+            Button cancelButton = new Button("Cancel");
+            // Create a horizontal box to contain the buttons
+            HBox buttonBox = new HBox(applyButton, cancelButton);
+            // Create a vertical box to contain the combo box and the button box
+            VBox colorThemeBox = new VBox(colorThemeComboBox, buttonBox);
+            // Create a scene for the color theme dialog
+            Scene colorThemeScene = new Scene(colorThemeBox);
+            // Set the scene to the color theme stage
+            colorThemeStage.setScene(colorThemeScene);
+            // Show the color theme stage
+            colorThemeStage.show();
+            // Define what happens when the "Apply" button is clicked
+            applyButton.setOnAction(e2 -> {
+                // Get the selected color theme
+                String colorTheme = colorThemeComboBox.getValue();
+                // Change the color theme of the IDE
+                if (colorTheme.equals("Light")) {
+                    JMetro jMetro = new JMetro(Style.LIGHT);
+                    jMetro.setScene(primaryStage.getScene());
+                } else if (colorTheme.equals("Dark")) {
+                    JMetro jMetro = new JMetro(Style.DARK);
+                    jMetro.setScene(primaryStage.getScene());
+                }
+                // Close the color theme stage
+                colorThemeStage.close();
+            });
+            // Define what happens when the "Cancel" button is clicked
+            cancelButton.setOnAction(e2 -> {
+                // Close the color theme stage
+                colorThemeStage.close();
+            });
+        });
+
+        // Technical Support menu item                }
+        //                // remove the '*' from tab's name
+        //                if (selectedTab.getText().endsWith("*")) {
+        //                    selectedTab.setText(selectedTab.getText().substring(0, selectedTab.getText().length() - 1));
+        //                }
+        //            }
+        //        });
+        //
+        //        // Define your toolbar as an HBox
+        //        HBox toolbar = new HBox();
+        //        HBox.setHgrow(toolbar, Priority.ALWAYS);
+        //
+        //        // Add an expanding spacer to push buttons to the right
+        //        Region spacer = new Region();
+        //        HBox.setHgrow(spacer, Priority.ALWAYS);
+        //
+        //        toolbar.getChildren().addAll(spacer, zoomOutButton, zoomInButton);
+        //
+        //        // Create a layout and add the toolbar, menu bar and text area
+        //        BorderPane layout = new BorderPane();
+        //        VBox topContainer = new VBox(menuBar, toolbar);
+        //        layout.setTop(topContainer);
+        //
+        //        SplitPane splitPane = new SplitPane();
+        //        splitPane.getItems().addAll(fileTreeView, tabPane);
+        //        layout.setCenter(splitPane);
+        //        // Create a scene and add the layout
+        //        Scene scene = new Scene(layout, 800, 600);
+        //        JMetro jMetro = new JMetro(Style.LIGHT);
+        //        jMetro.setScene(scene);
+        //
+        //        primaryStage.setScene(scene);
+        //        primaryStage.setTitle("Basic IDE");
+        //        primaryStage.show();
+        //    }
+        //
+        //    private TreeItem<File> createNode(final File file, ImageView folderIcon, ImageView fileIcon) {
+        //        return new TreeItem<File>(file) {
+        //            private boolean isLeaf;
+        //            private boolean isFirstTimeChildren = true;
+        //            private boolean isFirstTimeLeaf = true;
+        //
+        //            @Override
+        //            public ObservableList<TreeItem<File>> getChildren() {
+        //                if (isFirstTimeChildren) {
+        //                    isFirstTimeChildren = false;
+        //                    super.getChildren().setAll(buildChildren(this));
+        //                }
+        //                return super.getChildren();
+        //            }
+        //
+        //            @Override
+        //            public boolean isLeaf() {
+        //                if (isFirstTimeLeaf) {
+        //                    isFirstTimeLeaf = false;
+        //                    isLeaf = file.isFile();
+        //                }
+        //                return isLeaf;
+        //            }
+        //
+        //            private ObservableList<TreeItem<File>> buildChildren(TreeItem<File> treeItem) {
+        //                File f = treeItem.getValue();
+        //                if (f != null && f.isDirectory()) {
+        //                    File[] files = f.listFiles();
+        //                    if (files != null) {
+        //                        ObservableList<TreeItem<File>> children = FXCollections.observableArrayList();
+        //                        for (File childFile : files) {
+        //                            children.add(createNode(childFile, folderIcon, fileIcon));
+        //                        }
+        //                        return children;
+        //                    }
+        //                }
+        //                return FXCollections.emptyObservableList();
+        //            }
+        //        };
+        //    }
+        //
+        //    public static void main(String[] args) {
+        //        launch(args);
+        //    }
+        //}
+        // Open a page where all the technical support contacts are written
+
+        technicalSupport.setOnAction(e -> {
+            // opens HTML page with all contacts
+            String htmlPagePath = "src/main/resources/com/ping/ide/technical_support_contacts.html";
+            // Chemin vers le fichier HTML contenant les contacts de support technique
+            try {
+                File htmlFile = new File(htmlPagePath);
+                Desktop.getDesktop().browse(htmlFile.toURI());
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        });
+
+        // Update menu item
+        // Open a dialog with information about the IDE
+        updates.setOnAction(e -> {
+            Stage updatesStage = new Stage();
+            updatesStage.setTitle("Version 9.7.4. There are no updates available at this time.");
+            // Chargez le fichier GIF animé à partir d'un fichier ou d'une ressource
+            Image gifImage = new Image(Objects.requireNonNull(getClass().getResourceAsStream("tenor.gif")));
+
+            // Créez un ImageView contenant le GIF animé
+            ImageView gifImageView = new ImageView(gifImage);
+
+            // Créez un conteneur pour le contrôle ImageView
+            StackPane stackPane = new StackPane(gifImageView);
+
+            // Créez une scène avec le conteneur StackPane
+            Scene scene = new Scene(stackPane);
+
+            updatesStage.setScene(scene);
+            updatesStage.showAndWait();
+
+        });
+        // About menu item
+        // Open a dialog with information about the IDE
+        about.setOnAction(e -> {
+            // Create a notification
+            // La fonction est définie plus loin
+            notif("About", "About this IDE", "This IDE was created for the sake of Deng Xiao Ping 邓小平.\n It was created in order to fulfill Michel's pleasure.\n It is surely not licensed under the MIT License.", "th.jpg", 500, 300);
+        });
+
+        // Accessibility Options menu item
+        // Open a menu where you can change the font size
+        fontSizeItem.setOnAction(e -> {
+            Slider fontSizeSlider = new Slider(10, 30, 12); // Valeur initiale : 12, plage : 10-30
+            fontSizeSlider.setBlockIncrement(1);
+            fontSizeSlider.setShowTickMarks(true);
+            fontSizeSlider.setShowTickLabels(true);
+            fontSizeSlider.setMajorTickUnit(5);
+
+            // Créer une boîte de dialogue
+            Dialog<Double> fontSizeDialog = new Dialog<>();
+            fontSizeDialog.setTitle("Taille de la police");
+            fontSizeDialog.setHeaderText("Sélectionnez la taille de la police");
+
+            // Ajouter le contrôle Slider à la boîte de dialogue
+            fontSizeDialog.getDialogPane().setContent(fontSizeSlider);
+
+            // Ajouter des boutons OK et Annuler
+            ButtonType buttonTypeOK = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+            fontSizeDialog.getDialogPane().getButtonTypes().addAll(buttonTypeOK, ButtonType.CANCEL);
+
+            // Récupérer la valeur sélectionnée lorsque l'utilisateur clique sur OK
+            fontSizeDialog.setResultConverter(dialogButton -> {
+                if (dialogButton == buttonTypeOK) {
+                    return fontSizeSlider.getValue();
+                }
+                return null;
+            });
+
+            // Afficher la boîte de dialogue et récupérer la taille de la police sélectionnée
+            Double selectedFontSize = fontSizeDialog.showAndWait().orElse(null);
+            // Utiliser la taille de la police sélectionnée
+            if (selectedFontSize != null) {
+                // Sur la même logique utilisée pour Zoom in et Zoom out
+                // on récupère le contenu de l'onglet sélectionné et on change la taille de la police
+                TextArea textArea = (TextArea) tabPane.getSelectionModel().getSelectedItem().getContent();
+                textArea.setStyle("-fx-font-size: " + selectedFontSize + "pt;");
+            }
+        });
+
+        // Getting Started menu item
+        gettingStarted.setOnAction(e -> {
+            String url = "https://miro.com/welcomeonboard/RHRubkhGRlRtdGV5Rk9BWjNSODJ6ZVJMUHNVbnVPU2xRVmFGWHpTaWlOTFNKbFhnOXE1MzNHRmtUS01GN1g1ZnwzNDU4NzY0NTU2OTk0MTk0MTgxfDI=?share_link_id=995288361615";
+            openWebPage(url);
+        });
+
+        // Keyboard Shortcuts menu item
+        // Pop-up menu which says : nothing to see here
+        keyboardShortcuts.setOnAction(e -> {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("KeyBoard Shortcuts");
+            alert.setHeaderText("Nothing to see here");
+            alert.setContentText("For the moment.");
+            alert.showAndWait();
+        });
+
+
+        helpMenu.getItems().addAll(gettingStarted, accessibilityOptions, about, updates, technicalSupport, faq, documentation, keyboardShortcuts);
+        helpBar.getMenus().addAll(helpMenu);
+
+        // Create a menu bar and add a "File" menu
+        MenuBar menuBar = new MenuBar();
+        Menu fileMenu = new Menu("File");
+        MenuItem openFileItem = new MenuItem("Open File...");
+        MenuItem openDirectoryItem = new MenuItem("Open Directory...");
+        MenuItem saveItem = new MenuItem("Save");
+        fileMenu.getItems().addAll(openFileItem, openDirectoryItem, saveItem);
+        menuBar.getMenus().addAll(fileMenu);
+
+        /*
+         * Fin du code pour barre de menu
+         */
+
+        // Create a tree view for the file system
+        TreeView<File> fileTreeView = new TreeView<>();
+
+        fileTreeView.setCellFactory(param -> new TreeCell<File>() {
+            @Override
+            protected void updateItem(File item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    setText(item.getName());
+                    if (item.isDirectory()) {
+                        setGraphic(new ImageView(folderIcon.getImage()));
+                    } else {
+                        setGraphic(new ImageView(fileIcon.getImage()));
+                    }
+
+                    setOnMouseClicked(event -> {
+                        if (!item.isDirectory()) {
+                            try {
+                                String content = Files.readString(Path.of(item.getPath()));
+                                CodeArea textArea = new CodeArea(content);
+                                textArea.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
+                                textArea.setStyleSpans(0, computeHighlighting(textArea.getText(), item.getName()));
+                                textArea.richChanges()
+                                        .filter(ch -> !ch.getInserted().equals(ch.getRemoved()))  // filter out replacements of equal content
+                                        .subscribe(change -> {
+                                            textArea.setStyleSpans(0, computeHighlighting(textArea.getText(), item.getName()));
+                                        });
+                                Tab tab = new Tab(item.getName(), textArea);
+                                // Save the File object in the tab's user data
+                                tab.setUserData(item);
+                                // Add a "*" to the tab's name if the text area's content is changed
+                                textArea.textProperty().addListener((observable, oldValue, newValue) -> {
+                                    if (!tab.getText().endsWith("*")) {
+                                        tab.setText(tab.getText() + "*");
+                                    }
+                                });
+                                tabPane.getTabs().add(tab);
+                                tabPane.getSelectionModel().select(tab);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    });
+                }
+            }
+        });
+
+
+        Pane treeViewContainer = new Pane(fileTreeView);
+        treeViewContainer.setStyle("-fx-background-color: #f3f3f3;");
+
+        // Define action for Refresh Button
+        refreshButton.setOnAction(e -> refreshTreeView(fileTreeView, currentRootDirectory, folderIcon, fileIcon));
+
+        openFileItem.setOnAction(e -> {
+            FileChooser fileChooser = new FileChooser();
+            File selectedFile = fileChooser.showOpenDialog(primaryStage);
+
+            if (selectedFile != null) {
+                try {
+                    String content = Files.readString(selectedFile.toPath());
+
+                    // Create a new tab with the file content
+                    CodeArea textArea = new CodeArea(content);
+                    textArea.getStylesheets().add(getClass().getResource("style.css").toExternalForm());
+                    textArea.setStyleSpans(0, computeHighlighting(textArea.getText(), selectedFile.getName()));
+                    textArea.richChanges()
+                            .filter(ch -> !ch.getInserted().equals(ch.getRemoved())) // XXX
+                            .subscribe(change -> {
+                                textArea.setStyleSpans(0, computeHighlighting(textArea.getText(), selectedFile.getName()));
+                            });
+                    Tab tab = new Tab(selectedFile.getName(), textArea);
+                    // Save the file object as the tab's user data
+                    tab.setUserData(selectedFile);
+
+                    textArea.textProperty().addListener((observable, oldValue, newValue) -> {
+                        if (!tab.getText().endsWith("*")) {
+                            tab.setText(tab.getText() + "*");
+                        }
+                    });
+                    tabPane.getTabs().add(tab);
+                    tabPane.getSelectionModel().select(tab);
+
+                    // Now make the file visible in the tree view
+                    currentRootDirectory = selectedFile.getParentFile();
+                    TreeItem<File> root = createNode(currentRootDirectory, folderIcon, fileIcon);
+                    fileTreeView.setRoot(root);
+
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+                }
+            }
+        });
+
+        openDirectoryItem.setOnAction(e -> {
+            DirectoryChooser directoryChooser = new DirectoryChooser();
+            File selectedDirectory = directoryChooser.showDialog(primaryStage);
+
+            if (selectedDirectory != null) {
+                currentRootDirectory = selectedDirectory;
+                TreeItem<File> rootItem = createNode(currentRootDirectory, folderIcon, fileIcon);
+                fileTreeView.setRoot(rootItem);
+            }
+        });
+
+        // MenuItem
+        saveItem.setOnAction(e -> saveFile(tabPane));
+
+        // Toolbar button
+        saveFileButton.setOnAction(e -> saveFile(tabPane));
+
+
+        // Define your toolbar as an HBox
+        HBox toolbar = new HBox();
+        HBox.setHgrow(toolbar, Priority.ALWAYS);
+
+        // Add an expanding spacer to push buttons to the right
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        toolbar.getChildren().addAll(refreshButton, saveFileButton, printButton, spacer, runButton, zoomOutButton, zoomInButton);
+
+        // Create a layout and add the toolbar, menu bar and text area
+        BorderPane layout = new BorderPane();
+        HBox menuContainer = new HBox(menuBar, helpBar);
+        VBox topContainer = new VBox(menuContainer, toolbar);
+        layout.setTop(topContainer);
+
+        SplitPane splitPane = new SplitPane();
+        splitPane.getItems().addAll(fileTreeView, tabPane);
+        layout.setCenter(splitPane);
+
+        TextArea console = new TextArea();
+        console.setEditable(false);  // The user can't directly modify the console's text
+        console.setFont(new Font("Courier New", 60));
+        console.setOnMouseEntered(event -> {
+            console.setFont(new Font("Courier New", 60));
+        });
+
+        layout.setBottom(console);
+
+        // Run button action
+        runButton.setOnAction(e -> {
+            Tab selectedTab = tabPane.getSelectionModel().getSelectedItem();
+            if (selectedTab != null) {
+                CodeArea currentCodeArea = (CodeArea) selectedTab.getContent();
+                runScript(currentCodeArea.getText(), console);
+            }
+        });
+
+        printButton.setOnAction(e -> {
+            try {
+                // create a temporary file
+                File tempFile = File.createTempFile("consoleOutput", ".txt");
+                tempFile.deleteOnExit();
+
+                // write the console text to the file
+                PrintWriter writer = new PrintWriter(tempFile);
+                writer.write(console.getText());
+                writer.close();
+
+                // print the file
+                Desktop desktop = Desktop.getDesktop();
+                desktop.print(tempFile);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        });
+
+
+        // Create a scene and add the layout
+        Scene scene = new Scene(layout, 800, 600);
+        JMetro jMetro = new JMetro(Style.LIGHT);
+        jMetro.setScene(scene);
+
+        primaryStage.setScene(scene);
+        primaryStage.setTitle("Basic IDE");
+        primaryStage.show();
+    }
+
+    /*
+     * Début des fonctions utilisées pour le menu 'Help'
+     */
+    private void openWebPage(String url) {
+        try {
+            Desktop.getDesktop().browse(new URI(url));
+        } catch (IOException | URISyntaxException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void notif(String title, String headerText, String contentText, String imagePath, int ImageWidth, int ImageHeight) {
+        Alert aboutDialog = new Alert(Alert.AlertType.INFORMATION);
+        aboutDialog.setTitle(title);
+        aboutDialog.setHeaderText(headerText);
+        aboutDialog.setContentText(contentText);
+        // Chargez l'image à partir d'un fichier ou d'une ressource
+        Image image = new Image(getClass().getResourceAsStream(imagePath));
+        // Créez un ImageView contenant l'image
+        ImageView imageView = new ImageView(image);
+        // Définissez la taille de l'image (facultatif)
+        imageView.setFitWidth(ImageWidth); // 500 for deng
+        imageView.setFitHeight(ImageHeight); // 300 for deng
+        // Définissez l'image sur la boîte de dialogue
+        aboutDialog.setGraphic(imageView);
+        aboutDialog.showAndWait();
+    }
+
+    /*
+     * Fin des fonctions utilisées pour le menu 'Help'
+     */
+
+    /*
+     * Fonctions utilisées pour la manipulation des fichiers et dossiers
+     */
+
+    private TreeItem<File> createNode(final File file, ImageView folderIcon, ImageView fileIcon) {
+        return new TreeItem<File>(file) {
+            private boolean isLeaf;
+            private boolean isFirstTimeChildren = true;
+            private boolean isFirstTimeLeaf = true;
+
+            @Override
+            public ObservableList<TreeItem<File>> getChildren() {
+                if (isFirstTimeChildren) {
+                    isFirstTimeChildren = false;
+                    super.getChildren().setAll(buildChildren(this));
+                }
+                return super.getChildren();
+            }
+
+            @Override
+            public boolean isLeaf() {
+                if (isFirstTimeLeaf) {
+                    isFirstTimeLeaf = false;
+                    isLeaf = file.isFile();
+                }
+                return isLeaf;
+            }
+
+            private ObservableList<TreeItem<File>> buildChildren(TreeItem<File> treeItem) {
+                File f = treeItem.getValue();
+                if (f != null && f.isDirectory()) {
+                    File[] files = f.listFiles();
+                    if (files != null) {
+                        ObservableList<TreeItem<File>> children = FXCollections.observableArrayList();
+                        for (File childFile : files) {
+                            children.add(createNode(childFile, folderIcon, fileIcon));
+                        }
+                        return children;
+                    }
+                }
+                return FXCollections.emptyObservableList();
+            }
+        };
+    }
+
+    public void refreshTreeView(TreeView<File> fileTreeView, File rootDirectory, ImageView folderIcon, ImageView fileIcon) {
+        TreeItem<File> root = createNode(rootDirectory, folderIcon, fileIcon);
+        fileTreeView.setRoot(root);
+    }
+
+    private void saveFile(TabPane tabPane) {
+        Tab selectedTab = tabPane.getSelectionModel().getSelectedItem();
+        if (selectedTab != null) {
+            // Assumes that the content node of the tab is a TextArea
+            CodeArea textArea = (CodeArea) selectedTab.getContent();
+            File file = (File) selectedTab.getUserData();
+            try {
+                Files.write(file.toPath(), textArea.getText().getBytes());
+            } catch (IOException ioException) {
+                ioException.printStackTrace();
+            }
+            // remove the '*' from tab's name
+            if (selectedTab.getText().endsWith("*")) {
+                selectedTab.setText(selectedTab.getText().substring(0, selectedTab.getText().length() - 1));
+            }
+        }
+    }
+
+    public void runScript(String code, TextArea console) {
+        try (Context context = Context.newBuilder().option("engine.WarnInterpreterOnly", "false").build()) {
+            Value result = context.eval("js", code);
+            console.setText(result.asString() + "\n");
+        } catch (PolyglotException ex) {
+            console.setText("Error: " + ex.getMessage() + "\n");
+        }
+    }
+}

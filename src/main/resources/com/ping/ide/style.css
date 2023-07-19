@@ -1,0 +1,95 @@
+.keywordhtml {
+    -fx-fill: #0000FF;
+    -fx-font-weight: bold;
+}
+
+.paren {
+    -fx-fill: #000000;
+}
+
+.brace {
+    -fx-fill: #000000;
+}
+
+.semicolon {
+    -fx-fill: #000000;
+}
+
+.string {
+    -fx-fill: #008000;
+}
+
+.comment {
+    -fx-fill: #808080;
+    -fx-font-style: italic;
+}
+
+.keywordcss {
+    -fx-fill: #0000FF;
+    -fx-font-weight: bold;
+}
+.stringcss {
+    -fx-fill: #008000;
+}
+.classcss {
+    -fx-fill: #b2b321;
+    -fx-font-weight: bold;
+}
+.functioncss {
+    -fx-fill: green;
+    -fx-font-weight: bold;
+}
+.commentphp {
+    -fx-fill: #808080;
+    -fx-font-style: italic;
+}
+.keywordphp {
+    -fx-fill: #0000FF;
+    -fx-font-weight: bold;
+}
+.stringphp {
+    -fx-fill: #008000;
+}
+.classphp {
+    -fx-fill: #b2b321;
+    -fx-font-weight: bold;
+}
+.functionphp {
+    -fx-fill: green;
+    -fx-font-weight: bold;
+}
+.variablephp {
+    -fx-fill: #eb4c17;
+}
+.commentphpone {
+    -fx-fill: #808080;
+    -fx-font-style: italic;
+}
+.keywordjs {
+    -fx-fill: #0000FF;
+    -fx-font-weight: bold;
+}
+.stringjs {
+    -fx-fill: #008000;
+}
+.stringjsone {
+    -fx-fill: #008000;
+}
+.stringvar {
+    -fx-fill: #008000;
+}
+.functionjs {
+    -fx-fill: green;
+    -fx-font-weight: bold;
+}
+.typejs {
+    -fx-fill: #eb4c17;
+}
+.commentjs {
+    -fx-fill: #808080;
+    -fx-font-style: italic;
+}
+.commentjsone {
+    -fx-fill: #808080;
+    -fx-font-style: italic;
+}

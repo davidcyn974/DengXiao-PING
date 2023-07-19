@@ -1,0 +1,12 @@
+.suggestion-button {
+    -fx-pref-width: Infinity;
+    -fx-pref-height: 60px;
+    -fx-background-color: red;
+    -fx-text-fill: black;
+}
+
+
+
+
+
+
